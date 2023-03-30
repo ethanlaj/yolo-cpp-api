@@ -1,8 +1,22 @@
 #include "yolov7.h"
 #include <opencv2/opencv.hpp>
+#include <opencv2/videoio/videoio_c.h>
 #include <opencv2/dnn/dnn.hpp>
 #include <fstream>
 #include <iostream>
+#include <chrono>
+#include <thread>
+
+
+// Function declarations
+void process_webcam(YOLOv7* yolov7, const std::vector<std::string>& classNames);
+
+std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
+    return "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
+           std::to_string(capture_height) + ", framerate=(fraction)" + std::to_string(framerate) +
+           "/1 ! nvvidconv flip-method=" + std::to_string(flip_method) + " ! video/x-raw, width=(int)" + std::to_string(display_width) + ", height=(int)" +
+           std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
+}
 
 YOLOv7 yolov7_init(const std::string& modelPath, const std::string& configPath,
                    float confThreshold, float nmsThreshold, int inputWidth, int inputHeight) {
@@ -105,25 +119,86 @@ int main(int argc, char** argv) {
     YOLOv7 yolov7 = yolov7_init(model_path, config_path, 0.25, 0.5, 640, 640);
     
     std::vector<std::string> classNames = readClassNames(classNames_path);
-    std::vector<Detection> detections = yolov7_detect(&yolov7, input_image);
-
-    for (const auto& detection : detections) {
-        int class_id = detection.class_id;
-        float confidence = detection.confidence;
-        cv::Rect bbox = detection.bbox;
-
-        // Draw the bounding box
-        cv::rectangle(input_image, bbox, cv::Scalar(0, 255, 0), 2);
-
-        // Display class name and confidence
-        std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
-        int baseLine;
-        cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-        cv::putText(input_image, label, cv::Point(bbox.x, bbox.y - labelSize.height),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
-    }
-
-    cv::imwrite(output_image_path, input_image);
+    
+    process_webcam(&yolov7, classNames);
 
     return 0;
 }
+
+void process_webcam(YOLOv7* yolov7, const std::vector<std::string>& classNames) {
+	int capture_width = 1280 ;
+    int capture_height = 720 ;
+    int display_width = 1280 ;
+    int display_height = 720 ;
+    int framerate = 30 ;
+    int flip_method = 0 ;
+
+    std::string pipeline = gstreamer_pipeline(capture_width,
+	capture_height,
+	display_width,
+	display_height,
+	framerate,
+	flip_method);
+	
+	cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
+
+    if (!cap.isOpened()) {
+        std::cerr << "Error: Unable to open the webcam." << std::endl;
+        return;
+    }
+    
+	// Add a delay
+	std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    cv::Mat frame;
+
+    while (true) {
+		if (!cap.read(frame)) {
+			std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
+			continue;
+		}
+		
+        if (frame.empty()) {
+            std::cerr << "Error: Empty frame captured." << std::endl;
+            break;
+        }
+        
+        cv::flip(frame, frame, 0); // Flip the frame vertically
+        
+        cv::Mat resized_frame;
+		cv::resize(frame, resized_frame, cv::Size(416, 416));
+        		
+		int64 start_ticks = cv::getTickCount();
+        std::vector<Detection> detections = yolov7_detect(yolov7, resized_frame);
+
+        for (const auto& detection : detections) {
+            int class_id = detection.class_id;
+            float confidence = detection.confidence;
+
+            cv::Rect bbox(
+                detection.bbox.x * frame.cols / resized_frame.cols,
+                detection.bbox.y * frame.rows / resized_frame.rows,
+                detection.bbox.width * frame.cols / resized_frame.cols,
+                detection.bbox.height * frame.rows / resized_frame.rows
+            );
+
+            std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
+            int baseLine;
+            cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+            cv::putText(frame, label, cv::Point(bbox.x, bbox.y - labelSize.height),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+        }
+        
+        int64 end_ticks = cv::getTickCount();
+		double elapsed_time_ms = (end_ticks - start_ticks) * 1000 / cv::getTickFrequency();
+		std::cout << "Elapsed time: " << elapsed_time_ms << " ms" << std::endl;
+
+        cv::imshow("YOLOv7 Object Detection", frame);
+
+        int key = cv::waitKey(1) & 0xFF;
+        if (key == 27 || key == 'q') { // Exit if the user presses 'ESC' or 'q'
+            break;
+        }
+    }
+}
+
