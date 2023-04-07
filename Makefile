@@ -1,6 +1,6 @@
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++11 -I/usr/include/opencv4 -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore
-LDFLAGS = -L/usr/lib/aarch64-linux-gnu -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_videoio -lopencv_dnn -lQt5Widgets -lQt5Gui -lQt5Core
+CXXFLAGS = -Wall -Wextra -std=c++11 -I/usr/include/opencv4 -I/usr/local/Qt-5.15.9/include -I/usr/local/Qt-5.15.9/include/QtWidgets -I/usr/local/Qt-5.15.9/include/QtGui -I/usr/local/Qt-5.15.9/include/QtCore
+LDFLAGS = -L/usr/lib/aarch64-linux-gnu -L/usr/local/Qt-5.15.9/lib -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_videoio -lopencv_dnn -lQt5Core -lQt5Gui -lQt5Widgets
 
 OBJS = src/main.o src/utils.o src/MainWindow.o src/mainwindow_moc.o src/VideoWidget.o src/videowidget_moc.o
 
@@ -20,13 +20,13 @@ src/mainwindow_moc.o: src/mainwindow_moc.cpp src/MainWindow.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 src/mainwindow_moc.cpp: src/MainWindow.h
-	/usr/lib/aarch64-linux-gnu/qt5/bin/moc $< -o $@
+	/usr/local/Qt-5.15.9/bin/moc $< -o $@
 	
 src/videowidget_moc.o: src/videowidget_moc.cpp src/VideoWidget.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 src/videowidget_moc.cpp: src/VideoWidget.h
-	/usr/lib/aarch64-linux-gnu/qt5/bin/moc $< -o $@
+	/usr/local/Qt-5.15.9/bin/moc $< -o $@
 
 clean:
 	rm -f $(OBJS) src/mainwindow_moc.cpp yolov7_example

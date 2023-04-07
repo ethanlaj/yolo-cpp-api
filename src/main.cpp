@@ -12,6 +12,7 @@
 #include <thread>
 
 #include <QApplication>
+#include <QThread>
 #include <QTimer>
 
 #include "utils.h"
@@ -36,6 +37,14 @@ int main(int argc, char** argv) {
 
     YOLOv7 yolov7 = yolov7_init(model_path, config_path, 0.25, 0.5, 416, 416);
     std::vector<std::string> classNames = readClassNames(classNames_path);
+    
+    QObject::connect(&mainWindow, &MainWindow::confThresholdChanged, [&yolov7](float value) {
+        yolov7.confThreshold = value;
+    });
+
+    QObject::connect(&mainWindow, &MainWindow::nmsThresholdChanged, [&yolov7](float value) {
+        yolov7.nmsThreshold = value;
+    });
 
     int capture_width = 1280;
     int capture_height = 720;
@@ -46,56 +55,89 @@ int main(int argc, char** argv) {
     std::string pipeline = gstreamer_pipeline(capture_width, capture_height, display_width, display_height, framerate, flip_method);
     cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
 
-    QTimer timer;
-    QObject::connect(&timer, &QTimer::timeout, [&]() {
-        cv::Mat frame;
-        if (!cap.read(frame)) {
-            std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
-            return;
+    QThread *videoProcessingThread = nullptr;
+    QObject::connect(&mainWindow, &MainWindow::startClicked, [&]() {
+        if (videoProcessingThread && videoProcessingThread->isRunning()) {
+            videoProcessingThread->requestInterruption();
+            videoProcessingThread->wait(0);
         }
+    
+        videoProcessingThread = new QThread();
+        QTimer *timer = new QTimer();
+        timer->moveToThread(videoProcessingThread);
+        videoProcessingThread->start();
 
-        if (frame.empty()) {
-            std::cerr << "Error: Empty frame captured." << std::endl;
-            return;
-        }
+        QObject::connect(videoProcessingThread, &QThread::started, [&]() {
+            QObject::connect(timer, &QTimer::timeout, [&]() {
+                cv::Mat frame;
+                if (!cap.read(frame)) {
+                    std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
+                    return;
+                }
 
-        cv::flip(frame, frame, 0); // Flip the frame vertically
+                if (frame.empty()) {
+                    std::cerr << "Error: Empty frame captured." << std::endl;
+                    return;
+                }
 
-        cv::Mat resized_frame;
-        cv::resize(frame, resized_frame, cv::Size(416, 416));
+                cv::flip(frame, frame, 0); // Flip the frame vertically
 
-        std::vector<Detection> detections = yolov7_detect(&yolov7, resized_frame);
+                cv::Mat resized_frame;
+                cv::resize(frame, resized_frame, cv::Size(416, 416));
 
-        for (const auto& detection : detections) {
-            int class_id = detection.class_id;
-            float confidence = detection.confidence;
+                std::vector<Detection> detections = yolov7_detect(&yolov7, resized_frame);
 
-            // Scale the bounding box back to the original frame size
-            cv::Rect scaled_bbox(
-                detection.bbox.x * frame.cols / resized_frame.cols,
-                detection.bbox.y * frame.rows / resized_frame.rows,
-                detection.bbox.width * frame.cols / resized_frame.cols,
-                detection.bbox.height * frame.rows / resized_frame.rows
-            );
+                for (const auto& detection : detections) {
+                    int class_id = detection.class_id;
+                    float confidence = detection.confidence;
 
-            cv::rectangle(frame, scaled_bbox, cv::Scalar(0, 255, 0), 2);
+                    // Scale the bounding box back to the original frame size
+                    cv::Rect scaled_bbox(
+                        detection.bbox.x * frame.cols / resized_frame.cols,
+                        detection.bbox.y * frame.rows / resized_frame.rows,
+                        detection.bbox.width * frame.cols / resized_frame.cols,
+                        detection.bbox.height * frame.rows / resized_frame.rows
+                    );
 
-            std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
-            int baseLine;
-            cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-            cv::putText(frame, label, cv::Point(scaled_bbox.x, scaled_bbox.y - labelSize.height),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
-        }
+                    cv::rectangle(frame, scaled_bbox, cv::Scalar(0, 255, 0), 2);
 
-        QImage qt_image(frame.data, frame.cols, frame.rows, frame.step, QImage::Format_RGB888);
-        QImage rgb_image = qt_image.rgbSwapped(); // Convert the image from BGR to RGB
-        mainWindow.showFrame(rgb_image);
+                    std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
+                    int baseLine;
+                    cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+                    cv::rectangle(frame, cv::Rect(cv::Point(scaled_bbox.x, scaled_bbox.y - labelSize.height),
+                                      cv::Size(labelSize.width, labelSize.height + baseLine)),
+                                  cv::Scalar(0, 255, 0), cv::FILLED);
+                    cv::putText(frame, label, cv::Point(scaled_bbox.x, scaled_bbox.y), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
+                }
+
+                QImage img = QImage((const unsigned char*) (frame.data), frame.cols, frame.rows, frame.step, QImage::Format_RGB888).rgbSwapped();
+				mainWindow.showFrame(img);
+            });
+            timer->start(1000 / framerate);
+        });
+
+        QObject::connect(videoProcessingThread, &QThread::finished, timer, &QTimer::deleteLater);
+        QObject::connect(&mainWindow, &MainWindow::stopClicked, [&]() {
+            timer->stop();
+            videoProcessingThread->requestInterruption();
+            videoProcessingThread->quit();
+            videoProcessingThread->wait(0);
+        });
     });
 
-    timer.start(0); // Update the video widget every 0 milliseconds
+    int ret = app.exec();
 
-    return app.exec();
+    if (videoProcessingThread) {
+        videoProcessingThread->requestInterruption();
+        videoProcessingThread->wait(0);
+        delete videoProcessingThread;
+    }
+
+    cap.release();
+
+    return ret;
 }
+
 
 std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
     return "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
