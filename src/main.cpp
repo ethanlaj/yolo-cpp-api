@@ -1,15 +1,101 @@
+// Limelight
+// QT Framework
+// Confidence threshold level
+// Gsteamer, or upload vid file, upload image
+
 #include "yolov7.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/videoio/videoio_c.h>
 #include <opencv2/dnn/dnn.hpp>
-#include <fstream>
 #include <iostream>
 #include <chrono>
 #include <thread>
 
+#include <QApplication>
+#include <QTimer>
+
+#include "utils.h"
+#include "MainWindow.h"
 
 // Function declarations
 void process_webcam(YOLOv7* yolov7, const std::vector<std::string>& classNames);
+std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method);
+YOLOv7 yolov7_init(const std::string& modelPath, const std::string& configPath, float confThreshold, float nmsThreshold, int inputWidth, int inputHeight);
+std::vector<Detection> yolov7_detect(YOLOv7* yolov7, const cv::Mat& inputImage);
+
+int main(int argc, char** argv) {
+    QApplication app(argc, argv);
+
+    MainWindow mainWindow;
+    mainWindow.setFixedSize(1280, 720); // Set a fixed size for the main window
+    mainWindow.show();
+
+    std::string model_path = "models/weights/yolov7-tiny.weights";
+    std::string config_path = "models/cfg/yolov7-tiny.cfg";
+    std::string classNames_path = "models/names/coco.names";
+
+    YOLOv7 yolov7 = yolov7_init(model_path, config_path, 0.25, 0.5, 416, 416);
+    std::vector<std::string> classNames = readClassNames(classNames_path);
+
+    int capture_width = 1280;
+    int capture_height = 720;
+    int display_width = 1280;
+    int display_height = 720;
+    int framerate = 30;
+    int flip_method = 0;
+    std::string pipeline = gstreamer_pipeline(capture_width, capture_height, display_width, display_height, framerate, flip_method);
+    cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
+
+    QTimer timer;
+    QObject::connect(&timer, &QTimer::timeout, [&]() {
+        cv::Mat frame;
+        if (!cap.read(frame)) {
+            std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
+            return;
+        }
+
+        if (frame.empty()) {
+            std::cerr << "Error: Empty frame captured." << std::endl;
+            return;
+        }
+
+        cv::flip(frame, frame, 0); // Flip the frame vertically
+
+        cv::Mat resized_frame;
+        cv::resize(frame, resized_frame, cv::Size(416, 416));
+
+        std::vector<Detection> detections = yolov7_detect(&yolov7, resized_frame);
+
+        for (const auto& detection : detections) {
+            int class_id = detection.class_id;
+            float confidence = detection.confidence;
+
+            // Scale the bounding box back to the original frame size
+            cv::Rect scaled_bbox(
+                detection.bbox.x * frame.cols / resized_frame.cols,
+                detection.bbox.y * frame.rows / resized_frame.rows,
+                detection.bbox.width * frame.cols / resized_frame.cols,
+                detection.bbox.height * frame.rows / resized_frame.rows
+            );
+
+            cv::rectangle(frame, scaled_bbox, cv::Scalar(0, 255, 0), 2);
+
+            std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
+            int baseLine;
+            cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+            cv::putText(frame, label, cv::Point(scaled_bbox.x, scaled_bbox.y - labelSize.height),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+        }
+
+        QImage qt_image(frame.data, frame.cols, frame.rows, frame.step, QImage::Format_RGB888);
+        QImage rgb_image = qt_image.rgbSwapped(); // Convert the image from BGR to RGB
+        mainWindow.showFrame(rgb_image);
+    });
+
+    timer.start(0); // Update the video widget every 0 milliseconds
+
+    return app.exec();
+}
 
 std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
     return "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
@@ -88,117 +174,3 @@ std::vector<Detection> yolov7_detect(YOLOv7* yolov7, const cv::Mat& inputImage) 
 
     return nmsDetections;
 }
-
-std::vector<std::string> readClassNames(const std::string& classNamesPath) {
-    std::vector<std::string> classNames;
-    std::ifstream classNamesFile(classNamesPath);
-    if (classNamesFile.is_open()) {
-        std::string className;
-        while (std::getline(classNamesFile, className)) {
-            classNames.push_back(className);
-        }
-        classNamesFile.close();
-    }
-    return classNames;
-}
-
-int main(int argc, char** argv) {
-    if (argc != 6) {
-        printf("Usage: %s <image_path> <model_path> <config_path> <classNames_path> <output_image_path>\n", argv[0]);
-        return 1;
-    }
-
-    std::string image_path = argv[1];
-    std::string model_path = argv[2];
-    std::string config_path = argv[3];
-    std::string classNames_path = argv[4];
-    std::string output_image_path = argv[5];
-
-    cv::Mat input_image = cv::imread(image_path, cv::IMREAD_COLOR);
-
-    YOLOv7 yolov7 = yolov7_init(model_path, config_path, 0.25, 0.5, 640, 640);
-    
-    std::vector<std::string> classNames = readClassNames(classNames_path);
-    
-    process_webcam(&yolov7, classNames);
-
-    return 0;
-}
-
-void process_webcam(YOLOv7* yolov7, const std::vector<std::string>& classNames) {
-	int capture_width = 1280 ;
-    int capture_height = 720 ;
-    int display_width = 1280 ;
-    int display_height = 720 ;
-    int framerate = 30 ;
-    int flip_method = 0 ;
-
-    std::string pipeline = gstreamer_pipeline(capture_width,
-	capture_height,
-	display_width,
-	display_height,
-	framerate,
-	flip_method);
-	
-	cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
-
-    if (!cap.isOpened()) {
-        std::cerr << "Error: Unable to open the webcam." << std::endl;
-        return;
-    }
-    
-	// Add a delay
-	std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    cv::Mat frame;
-
-    while (true) {
-		if (!cap.read(frame)) {
-			std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
-			continue;
-		}
-		
-        if (frame.empty()) {
-            std::cerr << "Error: Empty frame captured." << std::endl;
-            break;
-        }
-        
-        cv::flip(frame, frame, 0); // Flip the frame vertically
-        
-        cv::Mat resized_frame;
-		cv::resize(frame, resized_frame, cv::Size(416, 416));
-        		
-		int64 start_ticks = cv::getTickCount();
-        std::vector<Detection> detections = yolov7_detect(yolov7, resized_frame);
-
-        for (const auto& detection : detections) {
-            int class_id = detection.class_id;
-            float confidence = detection.confidence;
-
-            cv::Rect bbox(
-                detection.bbox.x * frame.cols / resized_frame.cols,
-                detection.bbox.y * frame.rows / resized_frame.rows,
-                detection.bbox.width * frame.cols / resized_frame.cols,
-                detection.bbox.height * frame.rows / resized_frame.rows
-            );
-
-            std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
-            int baseLine;
-            cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-            cv::putText(frame, label, cv::Point(bbox.x, bbox.y - labelSize.height),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
-        }
-        
-        int64 end_ticks = cv::getTickCount();
-		double elapsed_time_ms = (end_ticks - start_ticks) * 1000 / cv::getTickFrequency();
-		std::cout << "Elapsed time: " << elapsed_time_ms << " ms" << std::endl;
-
-        cv::imshow("YOLOv7 Object Detection", frame);
-
-        int key = cv::waitKey(1) & 0xFF;
-        if (key == 27 || key == 'q') { // Exit if the user presses 'ESC' or 'q'
-            break;
-        }
-    }
-}
-
