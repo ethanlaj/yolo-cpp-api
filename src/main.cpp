@@ -1,8 +1,3 @@
-// Limelight
-// QT Framework
-// Confidence threshold level
-// Gsteamer, or upload vid file, upload image
-
 #include "yolov7.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/videoio/videoio_c.h>
@@ -12,11 +7,15 @@
 #include <thread>
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QThread>
 #include <QTimer>
+#include <QObject>
 
 #include "utils.h"
 #include "MainWindow.h"
+#include "TimerHandler.h"
+#include "CloseEventFilter.h"
 
 // Function declarations
 void process_webcam(YOLOv7* yolov7, const std::vector<std::string>& classNames);
@@ -25,10 +24,12 @@ YOLOv7 yolov7_init(const std::string& modelPath, const std::string& configPath, 
 std::vector<Detection> yolov7_detect(YOLOv7* yolov7, const cv::Mat& inputImage);
 
 int main(int argc, char** argv) {
-    QApplication app(argc, argv);
-
+	QApplication app(argc, argv);
+	
     MainWindow mainWindow;
     mainWindow.setFixedSize(1280, 720); // Set a fixed size for the main window
+    mainWindow.videoProcessingThread = nullptr;
+
     mainWindow.show();
 
     std::string model_path = "models/weights/yolov7-tiny.weights";
@@ -53,87 +54,91 @@ int main(int argc, char** argv) {
     int framerate = 30;
     int flip_method = 0;
     std::string pipeline = gstreamer_pipeline(capture_width, capture_height, display_width, display_height, framerate, flip_method);
-    cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
+	mainWindow.cap.open(pipeline, cv::CAP_GSTREAMER);
 
-    QThread *videoProcessingThread = nullptr;
     QObject::connect(&mainWindow, &MainWindow::startClicked, [&]() {
-        if (videoProcessingThread && videoProcessingThread->isRunning()) {
-            videoProcessingThread->requestInterruption();
-            videoProcessingThread->wait(0);
+        if (mainWindow.videoProcessingThread && mainWindow.videoProcessingThread->isRunning()) {
+            mainWindow.videoProcessingThread->requestInterruption();
+            mainWindow.videoProcessingThread->wait(0);
         }
     
-        videoProcessingThread = new QThread();
-        QTimer *timer = new QTimer();
-        timer->moveToThread(videoProcessingThread);
-        videoProcessingThread->start();
+        mainWindow.videoProcessingThread = new QThread();
+        TimerHandler *timerHandler = new TimerHandler();
+        timerHandler->moveToThread(mainWindow.videoProcessingThread);
+        mainWindow.videoProcessingThread->start();
+        
+        QObject::connect(mainWindow.videoProcessingThread, &QThread::finished, mainWindow.videoProcessingThread, &QThread::deleteLater);
 
-        QObject::connect(videoProcessingThread, &QThread::started, [&]() {
-            QObject::connect(timer, &QTimer::timeout, [&]() {
-                cv::Mat frame;
-                if (!cap.read(frame)) {
-                    std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
-                    return;
-                }
+		QObject::connect(mainWindow.videoProcessingThread, &QThread::started, timerHandler, [&]() {
+			QObject::connect(timerHandler->timer, &QTimer::timeout, [&]() {
+				try {
+					cv::Mat frame;
+					if (!mainWindow.cap.read(frame)) {
+						std::cerr << "Error: Unable to capture a frame from the camera." << std::endl;
+						return;
+					}
 
-                if (frame.empty()) {
-                    std::cerr << "Error: Empty frame captured." << std::endl;
-                    return;
-                }
+					if (frame.empty()) {
+						std::cerr << "Error: Empty frame captured." << std::endl;
+						return;
+					}
 
-                cv::flip(frame, frame, 0); // Flip the frame vertically
+					cv::flip(frame, frame, 0); // Flip the frame vertically
 
-                cv::Mat resized_frame;
-                cv::resize(frame, resized_frame, cv::Size(416, 416));
+					cv::Mat resized_frame;
+					cv::resize(frame, resized_frame, cv::Size(416, 416));
 
-                std::vector<Detection> detections = yolov7_detect(&yolov7, resized_frame);
+					std::vector<Detection> detections = yolov7_detect(&yolov7, resized_frame);
 
-                for (const auto& detection : detections) {
-                    int class_id = detection.class_id;
-                    float confidence = detection.confidence;
+					for (const auto& detection : detections) {
+						int class_id = detection.class_id;
+						float confidence = detection.confidence;
 
-                    // Scale the bounding box back to the original frame size
-                    cv::Rect scaled_bbox(
-                        detection.bbox.x * frame.cols / resized_frame.cols,
-                        detection.bbox.y * frame.rows / resized_frame.rows,
-                        detection.bbox.width * frame.cols / resized_frame.cols,
-                        detection.bbox.height * frame.rows / resized_frame.rows
-                    );
+						// Scale the bounding box back to the original frame size
+						cv::Rect scaled_bbox(
+							detection.bbox.x * frame.cols / resized_frame.cols,
+							detection.bbox.y * frame.rows / resized_frame.rows,
+							detection.bbox.width * frame.cols / resized_frame.cols,
+							detection.bbox.height * frame.rows / resized_frame.rows
+						);
 
-                    cv::rectangle(frame, scaled_bbox, cv::Scalar(0, 255, 0), 2);
+						cv::rectangle(frame, scaled_bbox, cv::Scalar(0, 255, 0), 2);
 
-                    std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
-                    int baseLine;
-                    cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-                    cv::rectangle(frame, cv::Rect(cv::Point(scaled_bbox.x, scaled_bbox.y - labelSize.height),
-                                      cv::Size(labelSize.width, labelSize.height + baseLine)),
-                                  cv::Scalar(0, 255, 0), cv::FILLED);
-                    cv::putText(frame, label, cv::Point(scaled_bbox.x, scaled_bbox.y), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
-                }
+						std::string label = classNames[class_id] + ": " + cv::format("%.2f", confidence);
+						int baseLine;
+						cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+						cv::rectangle(frame, cv::Rect(cv::Point(scaled_bbox.x, scaled_bbox.y - labelSize.height),
+										  cv::Size(labelSize.width, labelSize.height + baseLine)),
+									  cv::Scalar(0, 255, 0), cv::FILLED);
+						cv::putText(frame, label, cv::Point(scaled_bbox.x, scaled_bbox.y), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
+					}
 
-                QImage img = QImage((const unsigned char*) (frame.data), frame.cols, frame.rows, frame.step, QImage::Format_RGB888).rgbSwapped();
+				QImage img = QImage((const unsigned char*) (frame.data), frame.cols, frame.rows, frame.step, QImage::Format_RGB888).rgbSwapped();
 				mainWindow.showFrame(img);
-            });
-            timer->start(1000 / framerate);
+				
+				} catch (const cv::Exception &e) {
+					std::cerr << "OpenCV error: " << e.what() << std::endl;
+					mainWindow.stopVideoProcessing();
+				} catch (const std::exception &e) {
+					std::cerr << "Error: " << e.what() << std::endl;
+					mainWindow.stopVideoProcessing();
+				}
+			});
+			timerHandler->startTimer(1000 / framerate);
         });
-
-        QObject::connect(videoProcessingThread, &QThread::finished, timer, &QTimer::deleteLater);
+		
+        QObject::connect(mainWindow.videoProcessingThread, &QThread::finished, timerHandler, &TimerHandler::deleteLater);
+        QObject::connect(&mainWindow, &MainWindow::stopClicked, timerHandler, &TimerHandler::stopTimer);
         QObject::connect(&mainWindow, &MainWindow::stopClicked, [&]() {
-            timer->stop();
-            videoProcessingThread->requestInterruption();
-            videoProcessingThread->quit();
-            videoProcessingThread->wait(0);
+			if (mainWindow.videoProcessingThread && mainWindow.videoProcessingThread->isRunning()) {
+				mainWindow.videoProcessingThread->requestInterruption();
+				mainWindow.videoProcessingThread->quit();
+				mainWindow.videoProcessingThread->wait(0);
+			}
         });
     });
 
     int ret = app.exec();
-
-    if (videoProcessingThread) {
-        videoProcessingThread->requestInterruption();
-        videoProcessingThread->wait(0);
-        delete videoProcessingThread;
-    }
-
-    cap.release();
 
     return ret;
 }

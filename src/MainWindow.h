@@ -2,11 +2,15 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QThread>
 #include <QSlider>
+#include <QPointer>
 #include "VideoWidget.h"
 #include <QPushButton>
+#include <opencv2/opencv.hpp>
+#include <opencv2/videoio/videoio_c.h>
+#include <opencv2/dnn/dnn.hpp>
 
-// Add this line
 namespace Ui {
     class MainWindow;
 }
@@ -18,7 +22,13 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+	cv::VideoCapture cap;
     void showFrame(const QImage &frame);
+    void stopVideoProcessing();
+    QPointer<QThread> videoProcessingThread;
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 signals:
     void confThresholdChanged(float value);
@@ -43,7 +53,6 @@ private:
     QPushButton *startButton;
     QPushButton *stopButton;
 
-    // Add this line
     Ui::MainWindow *ui;
 };
 

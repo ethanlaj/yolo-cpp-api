@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
 
+#include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -32,7 +33,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(stopButton, &QPushButton::clicked, this, &MainWindow::onStopButtonClicked);
 }
 
-MainWindow::~MainWindow() {
+MainWindow::~MainWindow() {	 
+	if (cap.isOpened()) {
+        cap.release();
+    }
+    
+    if (videoProcessingThread) {
+        videoProcessingThread->requestInterruption();
+        videoProcessingThread->quit();
+        videoProcessingThread->wait(static_cast<unsigned long>(-1));
+    }
+    
     delete videoWidget;
     delete ui;
 }
@@ -65,6 +76,17 @@ void MainWindow::onStartButtonClicked() {
     startDetection();
 }
 
-void MainWindow::onStopButtonClicked() {
+void MainWindow::onStopButtonClicked() {	
     stopDetection();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+    stopVideoProcessing();
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::stopVideoProcessing() {
+    if (videoProcessingThread && videoProcessingThread->isRunning()) {
+        emit stopClicked();
+    }
 }
