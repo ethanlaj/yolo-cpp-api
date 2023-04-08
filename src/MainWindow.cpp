@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "ui_MainWindow.h"
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -6,74 +8,33 @@
 #include <QPushButton>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), videoWidget(new VideoWidget(this)) {
+    : QMainWindow(parent), ui(new Ui::MainWindow) {
 
-    QWidget *centralWidget = new QWidget(this);
-    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
-    QHBoxLayout *topLayout = new QHBoxLayout();
+    ui->setupUi(this);
 
-    QVBoxLayout *sliderLayout = new QVBoxLayout();
-    QLabel *confThresholdLabel = new QLabel("Confidence Threshold", this);
-    sliderLayout->addWidget(confThresholdLabel);
+    videoWidget = new VideoWidget(ui->videoWidgetContainer);
+    videoWidget->setGeometry(ui->videoWidgetContainer->rect());
+		
+	QSlider *confSlider = ui->confThresholdSlider;
+	QLabel *confValueLabel = ui->confValueLabel;
+	confValueLabel->setText(QString("%1").arg(static_cast<float>(confSlider->value()) / 100, 0, 'f', 2));
+	connect(confSlider, &QSlider::valueChanged, this, &MainWindow::onConfThresholdSliderValueChanged);
+	
+    QSlider *nmsSlider = ui->nmsThresholdSlider;	
+	QLabel *nmsValueLabel = ui->nmsValueLabel;
+	nmsValueLabel->setText(QString("%1").arg(static_cast<float>(nmsSlider->value()) / 100, 0, 'f', 2));
+    connect(nmsSlider, &QSlider::valueChanged, this, &MainWindow::onNmsThresholdSliderValueChanged);
 
-    QHBoxLayout *confSliderLayout = new QHBoxLayout();
-    QLabel *confMinLabel = new QLabel("0", this);
-    QLabel *confMaxLabel = new QLabel("1", this);
-    confThresholdSlider = new QSlider(Qt::Horizontal, this);
-    confThresholdSlider->setMinimum(0);
-    confThresholdSlider->setMaximum(100);
-    confThresholdSlider->setValue(25);
-    QLabel *confValueLabel = new QLabel("0.25", this);
-    connect(confThresholdSlider, &QSlider::valueChanged, this, [confValueLabel](int value) {
-        confValueLabel->setText(QString::number(static_cast<float>(value) / 100, 'f', 2));
-    });
-    connect(confThresholdSlider, SIGNAL(valueChanged(int)), this, SLOT(onConfThresholdSliderValueChanged(int)));
-
-    confSliderLayout->addWidget(confMinLabel);
-    confSliderLayout->addWidget(confThresholdSlider);
-    confSliderLayout->addWidget(confMaxLabel);
-    sliderLayout->addLayout(confSliderLayout);
-    sliderLayout->addWidget(confValueLabel);
-
-    QLabel *nmsThresholdLabel = new QLabel("NMS Threshold", this);
-    sliderLayout->addWidget(nmsThresholdLabel);
-
-    QHBoxLayout *nmsSliderLayout = new QHBoxLayout();
-    QLabel *nmsMinLabel = new QLabel("0", this);
-    QLabel *nmsMaxLabel = new QLabel("1", this);
-    nmsThresholdSlider = new QSlider(Qt::Horizontal, this);
-    nmsThresholdSlider->setMinimum(0);
-    nmsThresholdSlider->setMaximum(100);
-    nmsThresholdSlider->setValue(50);
-    QLabel *nmsValueLabel = new QLabel("0.50", this);
-    connect(nmsThresholdSlider, &QSlider::valueChanged, this, [nmsValueLabel](int value) {
-        nmsValueLabel->setText(QString::number(static_cast<float>(value) / 100, 'f', 2));
-    });
-    connect(nmsThresholdSlider, SIGNAL(valueChanged(int)), this, SLOT(onNmsThresholdSliderValueChanged(int)));
-
-    nmsSliderLayout->addWidget(nmsMinLabel);
-    nmsSliderLayout->addWidget(nmsThresholdSlider);
-    nmsSliderLayout->addWidget(nmsMaxLabel);
-    sliderLayout->addLayout(nmsSliderLayout);
-    sliderLayout->addWidget(nmsValueLabel);
-
-    QPushButton *startButton = new QPushButton("Start", this);
-    connect(startButton, &QPushButton::clicked, this, &MainWindow::startClicked);
-    sliderLayout->addWidget(startButton);
-
-    QPushButton *stopButton = new QPushButton("Stop", this);
-    connect(stopButton, &QPushButton::clicked, this, &MainWindow::stopClicked);
-    sliderLayout->addWidget(stopButton);
-
-    topLayout->addLayout(sliderLayout);
-    topLayout->addWidget(videoWidget);
-
-    mainLayout->addLayout(topLayout);
-    setCentralWidget(centralWidget);
+    startButton = ui->startButton;
+    connect(startButton, &QPushButton::clicked, this, &MainWindow::onStartButtonClicked);
+    
+    stopButton = ui->stopButton;
+    connect(stopButton, &QPushButton::clicked, this, &MainWindow::onStopButtonClicked);
 }
 
 MainWindow::~MainWindow() {
     delete videoWidget;
+    delete ui;
 }
 
 void MainWindow::showFrame(const QImage &frame) {
@@ -81,12 +42,29 @@ void MainWindow::showFrame(const QImage &frame) {
 }
 
 void MainWindow::onConfThresholdSliderValueChanged(int value) {
-    float confThreshold = static_cast<float>(value) / 100;
-    emit confThresholdChanged(confThreshold);
+   float confThreshold = static_cast<float>(value) / 100;
+   emit confThresholdChanged(confThreshold);
+   ui->confValueLabel->setText(QString("%1").arg(confThreshold, 0, 'f', 2));
 }
 
 void MainWindow::onNmsThresholdSliderValueChanged(int value) {
-    float nmsThreshold = static_cast<float>(value) / 100;
-    emit nmsThresholdChanged(nmsThreshold);
+   float nmsThreshold = static_cast<float>(value) / 100;
+   emit nmsThresholdChanged(nmsThreshold);
+   ui->nmsValueLabel->setText(QString("%1").arg(nmsThreshold, 0, 'f', 2));
 }
 
+void MainWindow::startDetection() {
+    emit startClicked();
+}
+
+void MainWindow::stopDetection() {
+    emit stopClicked();
+}
+
+void MainWindow::onStartButtonClicked() {
+    startDetection();
+}
+
+void MainWindow::onStopButtonClicked() {
+    stopDetection();
+}

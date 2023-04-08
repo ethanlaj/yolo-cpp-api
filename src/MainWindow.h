@@ -4,6 +4,12 @@
 #include <QMainWindow>
 #include <QSlider>
 #include "VideoWidget.h"
+#include <QPushButton>
+
+// Add this line
+namespace Ui {
+    class MainWindow;
+}
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -20,14 +26,25 @@ signals:
     void startClicked();
     void stopClicked();
 
+public slots:
+    void startDetection();
+    void stopDetection();
+
 private slots:
     void onConfThresholdSliderValueChanged(int value);
     void onNmsThresholdSliderValueChanged(int value);
+    void onStartButtonClicked();
+    void onStopButtonClicked();
 
 private:
     VideoWidget *videoWidget;
     QSlider *confThresholdSlider;
     QSlider *nmsThresholdSlider;
+    QPushButton *startButton;
+    QPushButton *stopButton;
+
+    // Add this line
+    Ui::MainWindow *ui;
 };
 
 #endif // MAINWINDOW_H
