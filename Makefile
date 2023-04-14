@@ -4,7 +4,7 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++11 -I /usr/include/opencv4 -I $(QT_PATH)/include -I $(QT_PATH)/include/QtWidgets -I $(QT_PATH)/include/QtGui -I $(QT_PATH)/include/QtCore
 LDFLAGS = -L/usr/lib/aarch64-linux-gnu -L $(QT_PATH)/Qt-5.15.9/lib -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -lopencv_videoio -lopencv_dnn -lQt5Core -lQt5Gui -lQt5Widgets
 
-MAIN_OBJS = src/main.o src/yolo.o src/webcam.o
+MAIN_OBJS = src/main.o src/yolo.o src/camera.o
 GUI_OBJS = src/gui/VideoWidget.o src/gui/videowidget_moc.o src/gui/MainWindow.o src/gui/mainwindow_moc.o src/gui/TimerHandler.o src/gui/timerhandler_moc.o
 OBJS = $(MAIN_OBJS) $(GUI_OBJS)
 
@@ -19,7 +19,7 @@ src/main.o: src/main.cpp src/gui/ui_MainWindow.h
 src/yolo.o: src/yolo.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-src/webcam.o: src/webcam.cpp
+src/camera.o: src/camera.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 	
 src/gui/MainWindow.o: src/gui/MainWindow.cpp
