@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 
 #include <QCloseEvent>
 #include <QVBoxLayout>
@@ -7,6 +8,7 @@
 #include <QSlider>
 #include <QPushButton>
 #include <QPointer>
+#include <QString>
 
 #include "MainWindow.h"
 #include "TimerHandler.h"
@@ -83,19 +85,38 @@ void MainWindow::connectSignalsSlots() {
     });
 
     QObject::connect(this, &MainWindow::startClicked, [this]() {
-        // Init yolo and camera
         int framerate = 30;
-
-        std::string model_path = "models/weights/yolov7-tiny.weights";
-		std::string config_path = "models/cfg/yolov7-tiny.cfg";
-		std::string classNames_path = "models/names/coco.names";
 		
-		yolo_init(yolo, model_path, config_path, yolo->confThreshold, yolo->nmsThreshold, 416, 416);
+		// Get input model from UI
+		std::string model = ui->modelName->text().toStdString();
+		std::stringstream model_path_stream;
+		model_path_stream << "models/weights/" << model << ".weights";
+		std::string model_path = model_path_stream.str();
+
+		std::stringstream config_path_stream;
+		config_path_stream << "models/cfg/" << model << ".cfg";
+		std::string config_path = config_path_stream.str();
+
+		std::stringstream classNames_path_stream;
+		classNames_path_stream << "models/names/" << ui->namesFile->text().toStdString() << ".names";
+		std::string classNames_path = classNames_path_stream.str();
+	
+		// Get input width/height from UI
+		int inputWidth = ui->inputWidth->text().toInt();
+		int inputHeight = ui->inputHeight->text().toInt();
+
+		/*std::cout << "model: " << model << std::endl;
+		std::cout << "model_path: " << model_path << std::endl;
+		std::cout << "config_path: " << config_path << std::endl;
+		std::cout << "classNames_path: " << classNames_path << std::endl;
+		std::cout << "inputWidth: " << inputWidth << std::endl;
+		std::cout << "inputHeight: " << inputHeight << std::endl;*/
+		
+		yolo_init(yolo, model_path, config_path, yolo->confThreshold, yolo->nmsThreshold, inputWidth, inputHeight);
 		classNames = new std::vector<std::string>();
 		*classNames = readClassNames(classNames_path);
 
 		setupCamera(*this, framerate);
-		//
 
         videoProcessingThread = new QThread();
 		TimerHandler *timerHandler = new TimerHandler();
