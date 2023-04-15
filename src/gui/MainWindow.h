@@ -26,11 +26,14 @@ public:
 
 	cv::VideoCapture cap;
 	QPointer<QThread> videoProcessingThread;
+	
+	YOLO *yolo;
+    std::vector<std::string> *classNames;
 
-	void connectSignalsSlots(YOLO &yolo, const std::vector<std::string> &classNames, int framerate);
+	void connectSignalsSlots();
     void showFrame(const QImage &frame);
     void stopVideoProcessing();
-
+    
 protected:
     void closeEvent(QCloseEvent *event) override;
 
@@ -39,10 +42,6 @@ signals:
     void nmsThresholdChanged(float value);
     void startClicked();
     void stopClicked();
-
-public slots:
-    void startDetection();
-    void stopDetection();
 
 private slots:
     void onConfThresholdSliderValueChanged(int value);

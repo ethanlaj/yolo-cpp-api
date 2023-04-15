@@ -6,7 +6,7 @@
 
 std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method);
 
-void setupCamera(MainWindow &mainWindow, int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method);
+void setupCamera(MainWindow &mainWindow, int framerate);
 
 void processFrame(MainWindow &mainWindow, cv::VideoCapture &cap, YOLO &yolo, const std::vector<std::string> &classNames);
 

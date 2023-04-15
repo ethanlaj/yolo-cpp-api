@@ -4,13 +4,18 @@
 #include <opencv2/core.hpp>
 #include <opencv2/dnn.hpp>
 
-typedef struct {
+struct YOLO {
     cv::dnn::Net net;
     float confThreshold;
     float nmsThreshold;
     int inputWidth;
     int inputHeight;
-} YOLO;
+
+    ~YOLO() {
+		std::cout << "YOLO deconstructor called" << std::endl;
+        //net.~Net();
+    }
+};
 
 struct Detection {
     int class_id;
@@ -18,7 +23,7 @@ struct Detection {
     cv::Rect bbox;
 };
 
-YOLO yolo_init(const std::string& modelPath, const std::string& configPath,
+void yolo_init(YOLO* yolo, const std::string& modelPath, const std::string& configPath,
                    float confThreshold, float nmsThreshold, int inputWidth, int inputHeight);
 
 //void yolov7_free(YOLOv7* yolov7);

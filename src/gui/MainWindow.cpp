@@ -1,9 +1,12 @@
+#include <iostream>
+
 #include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSlider>
 #include <QPushButton>
+#include <QPointer>
 
 #include "MainWindow.h"
 #include "TimerHandler.h"
@@ -13,6 +16,9 @@
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow) {
+	
+	classNames = nullptr;
+	videoProcessingThread = nullptr;
 
     ui->setupUi(this);
 
@@ -34,60 +40,83 @@ MainWindow::MainWindow(QWidget *parent)
     
     stopButton = ui->stopButton;
     connect(stopButton, &QPushButton::clicked, this, &MainWindow::onStopButtonClicked);
+    
+	yolo = new YOLO();
+    yolo->confThreshold = static_cast<float>(confSlider->value()) / 100.0f;
+	yolo->nmsThreshold = static_cast<float>(nmsSlider->value()) / 100.0f;
 }
 
-MainWindow::~MainWindow() {	 
-	if (cap.isOpened()) {
-        cap.release();
-    }
-    
+MainWindow::~MainWindow() {
     if (videoProcessingThread) {
-        videoProcessingThread->requestInterruption();
-        videoProcessingThread->quit();
-        videoProcessingThread->wait(static_cast<unsigned long>(-1));
+        delete videoProcessingThread;
+		std::cout << "VidProcessingThread has been deleted" << std::endl;
     }
-    
+
+    if (yolo) {
+        delete yolo;
+		std::cout << "yolo has been deleted" << std::endl;
+        yolo = nullptr;
+    }
+
+    if (classNames) {
+        delete classNames;
+		std::cout << "classNames has been deleted" << std::endl;
+        classNames = nullptr;
+    }
+
     delete videoWidget;
+	std::cout << "videoWidget has been deleted" << std::endl;
+
     delete ui;
+	std::cout << "ui has been deleted" << std::endl;
 }
 
-void MainWindow::connectSignalsSlots(YOLO &yolo, const std::vector<std::string> &classNames, int framerate) {
-    QObject::connect(this, &MainWindow::confThresholdChanged, [&yolo](float value) {
-        yolo.confThreshold = value;
+
+
+void MainWindow::connectSignalsSlots() {
+    QObject::connect(this, &MainWindow::confThresholdChanged, [&](float value) {
+        yolo->confThreshold = value;
     });
 
-    QObject::connect(this, &MainWindow::nmsThresholdChanged, [&yolo](float value) {
-        yolo.nmsThreshold = value;
+    QObject::connect(this, &MainWindow::nmsThresholdChanged, [&](float value) {
+        yolo->nmsThreshold = value;
     });
 
-    QObject::connect(this, &MainWindow::startClicked, [&]() {
-        if (videoProcessingThread && videoProcessingThread->isRunning()) {
-            videoProcessingThread->requestInterruption();
-            videoProcessingThread->wait(0);
-        }
+    QObject::connect(this, &MainWindow::startClicked, [this]() {
+        // Init yolo and camera
+        int framerate = 30;
+
+        std::string model_path = "models/weights/yolov7-tiny.weights";
+		std::string config_path = "models/cfg/yolov7-tiny.cfg";
+		std::string classNames_path = "models/names/coco.names";
+		
+		yolo_init(yolo, model_path, config_path, yolo->confThreshold, yolo->nmsThreshold, 416, 416);
+		classNames = new std::vector<std::string>();
+		*classNames = readClassNames(classNames_path);
+
+		setupCamera(*this, framerate);
+		//
 
         videoProcessingThread = new QThread();
-        TimerHandler *timerHandler = new TimerHandler();
-        timerHandler->moveToThread(videoProcessingThread);
-        videoProcessingThread->start();
+		TimerHandler *timerHandler = new TimerHandler();
+		QPointer<TimerHandler> timerHandlerPtr(timerHandler);
+		timerHandler->moveToThread(videoProcessingThread);
+		videoProcessingThread->start();
 
         QObject::connect(videoProcessingThread, &QThread::finished, videoProcessingThread, &QThread::deleteLater);
 
-        QObject::connect(videoProcessingThread, &QThread::started, timerHandler, [&]() {
-			QObject::connect(timerHandler->timer, &QTimer::timeout, [&]() {
-				processFrame(*this, cap, yolo, classNames);
+        QObject::connect(videoProcessingThread, &QThread::started, timerHandler, [this, timerHandlerPtr, framerate]() {
+			if (!timerHandlerPtr) return;
+			QObject::connect(timerHandlerPtr->timer, &QTimer::timeout, [this]() {
+				processFrame(*this, cap, *yolo, *classNames);
 			});
-			timerHandler->startTimer(1000 / framerate);
+			timerHandlerPtr->startTimer(1000 / framerate);
 		});
 
         QObject::connect(videoProcessingThread, &QThread::finished, timerHandler, &TimerHandler::deleteLater);
         QObject::connect(this, &MainWindow::stopClicked, timerHandler, &TimerHandler::stopTimer);
-        QObject::connect(this, &MainWindow::stopClicked, [&]() {
-            if (videoProcessingThread && videoProcessingThread->isRunning()) {
-                videoProcessingThread->requestInterruption();
-                videoProcessingThread->quit();
-                videoProcessingThread->wait(0);
-            }
+        QObject::connect(this, &MainWindow::stopClicked, [this]() {
+            stopVideoProcessing();
         });
     });
 }
@@ -108,29 +137,65 @@ void MainWindow::onNmsThresholdSliderValueChanged(int value) {
    ui->nmsValueLabel->setText(QString("%1").arg(nmsThreshold, 0, 'f', 2));
 }
 
-void MainWindow::startDetection() {
+void MainWindow::onStartButtonClicked() {
+	ui->startButton->setEnabled(false);
+    ui->stopButton->setEnabled(true);
+    
     emit startClicked();
 }
 
-void MainWindow::stopDetection() {
+void MainWindow::onStopButtonClicked() {
+    ui->stopButton->setEnabled(false);
+    ui->startButton->setEnabled(true);
+
     emit stopClicked();
-}
 
-void MainWindow::onStartButtonClicked() {
-    startDetection();
-}
-
-void MainWindow::onStopButtonClicked() {	
-    stopDetection();
+    if (!yolo) {
+        yolo = new YOLO();
+        yolo->confThreshold = static_cast<float>(ui->confThresholdSlider->value()) / 100.0f;
+        yolo->nmsThreshold = static_cast<float>(ui->nmsThresholdSlider->value()) / 100.0f;
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
     stopVideoProcessing();
+    
+    if (videoProcessingThread) {
+        videoProcessingThread->quit();
+        videoProcessingThread->wait(1000);
+        delete videoProcessingThread;
+        std::cout << "VidProcessingThread has been deleted" << std::endl;
+        videoProcessingThread = nullptr;
+    }
+    
     QMainWindow::closeEvent(event);
 }
 
 void MainWindow::stopVideoProcessing() {
     if (videoProcessingThread && videoProcessingThread->isRunning()) {
-        emit stopClicked();
+        videoProcessingThread->requestInterruption();
+        videoProcessingThread->quit();
+        videoProcessingThread->wait(1000);
+        delete videoProcessingThread;
+		std::cout << "VidProcessingThread has been deleted" << std::endl;
+        videoProcessingThread = nullptr;
+    }
+    
+    if (cap.isOpened()) {
+        cap.release();
+    }
+    
+    if (yolo) {
+        delete yolo;
+		std::cout << "yolo has been deleted" << std::endl;
+        yolo = nullptr;
+    }
+    
+    if (classNames) {
+        delete classNames;
+		std::cout << "classNames has been deleted" << std::endl;
+        classNames = nullptr;
     }
 }
+
+

@@ -4,25 +4,22 @@
 
 #include "yolo.h"
 
-YOLO yolo_init(const std::string& modelPath, const std::string& configPath,
+void yolo_init(YOLO* yolo, const std::string& modelPath, const std::string& configPath,
                    float confThreshold, float nmsThreshold, int inputWidth, int inputHeight) {
-    YOLO yolo;
-    yolo.net = cv::dnn::readNetFromDarknet(configPath, modelPath);
-    yolo.confThreshold = confThreshold;
-    yolo.nmsThreshold = nmsThreshold;
-    yolo.inputWidth = inputWidth;
-    yolo.inputHeight = inputHeight;
+    yolo->net = cv::dnn::readNetFromDarknet(configPath, modelPath);
+    yolo->confThreshold = confThreshold;
+    yolo->nmsThreshold = nmsThreshold;
+    yolo->inputWidth = inputWidth;
+    yolo->inputHeight = inputHeight;
 
     // Set preferable backend and target to CUDA if available
     if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
-        yolo.net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-        yolo.net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+        yolo->net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+        yolo->net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
         std::cout << "Using GPU acceleration with CUDA." << std::endl;
     } else {
         std::cout << "Using CPU for computation. No compatible GPU found or OpenCV not built with CUDA support." << std::endl;
     }
-
-    return yolo;
 }
 
 std::vector<Detection> yolo_detect(YOLO* yolo, const cv::Mat& inputImage) {
@@ -41,6 +38,7 @@ std::vector<Detection> yolo_detect(YOLO* yolo, const cv::Mat& inputImage) {
 
     for (const auto &outputLayer : outputLayers) {
         auto* data = (float*)outputLayer.data;
+        
         for (int j = 0; j < outputLayer.rows; ++j, data += outputLayer.cols) {
             cv::Mat scores = outputLayer.row(j).colRange(5, outputLayer.cols);
             cv::Point classIdPoint;
