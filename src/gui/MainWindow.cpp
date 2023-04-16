@@ -155,14 +155,14 @@ void MainWindow::onNmsThresholdSliderValueChanged(int value) {
 
 void MainWindow::onStartButtonClicked() {
 	ui->startButton->setEnabled(false);
-    ui->stopButton->setEnabled(true);
+	ui->stopButton->setEnabled(true);
     
-    ui->modelName->setEnabled(false);
+	ui->modelName->setEnabled(false);
 	ui->namesFile->setEnabled(false);
 	ui->inputWidth->setEnabled(false);
 	ui->inputHeight->setEnabled(false);
     
-    emit startClicked();
+	emit startClicked();
 }
 
 void MainWindow::onStopButtonClicked() {
