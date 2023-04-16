@@ -13,12 +13,12 @@ std::string gstreamer_pipeline (int capture_width, int capture_height, int displ
 
 
 void setupCamera(MainWindow &mainWindow, int framerate) {
-	int capture_width = 1280;
-	int capture_height = 720;
-	int display_width = 1280;
-	int display_height = 720;
-	int flip_method = 0;
-	
+    int capture_width = 1280;
+    int capture_height = 720;
+    int display_width = 1280;
+    int display_height = 720;
+    int flip_method = 0;
+    
     std::string pipeline = gstreamer_pipeline(capture_width, capture_height, display_width, display_height, framerate, flip_method);
     mainWindow.cap.open(pipeline, cv::CAP_GSTREAMER);
 }
@@ -58,20 +58,20 @@ void processFrame(MainWindow &mainWindow, cv::VideoCapture &cap, YOLO &yolo, con
 }
 
 void updateFPS(MainWindow &mainWindow) {
-	static int frame_counter = 0;
+    static int frame_counter = 0;
     static double last_fps_calculation_time = 0.0;
     static double fps = 0.0;
     
-	frame_counter++;
-	double current_time = static_cast<double>(cv::getTickCount()) / cv::getTickFrequency();
-	if (current_time - last_fps_calculation_time >= 1.0) {
-		fps = frame_counter / (current_time - last_fps_calculation_time);
-		last_fps_calculation_time = current_time;
-		frame_counter = 0;
-	}
-	
-	// Display FPS on the GUI
-	mainWindow.showFPS(fps);
+    frame_counter++;
+    double current_time = static_cast<double>(cv::getTickCount()) / cv::getTickFrequency();
+    if (current_time - last_fps_calculation_time >= 1.0) {
+        fps = frame_counter / (current_time - last_fps_calculation_time);
+        last_fps_calculation_time = current_time;
+        frame_counter = 0;
+    }
+    
+    // Display FPS on the GUI
+    mainWindow.showFPS(fps);
 }
 
 void addDetectionsToFrame(cv::Mat &frame, cv::Mat &resized_frame, const std::vector<Detection> &detections, const std::vector<std::string> &classNames) {

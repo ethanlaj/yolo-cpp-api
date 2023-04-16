@@ -12,7 +12,7 @@ struct YOLO {
     int inputHeight;
 
     ~YOLO() {
-		std::cout << "YOLO deconstructor called" << std::endl;
+        std::cout << "YOLO deconstructor called" << std::endl;
         //net.~Net();
     }
 };
