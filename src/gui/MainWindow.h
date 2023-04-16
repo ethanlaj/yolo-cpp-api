@@ -24,13 +24,13 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-	cv::VideoCapture cap;
-	QPointer<QThread> videoProcessingThread;
-	
-	YOLO *yolo;
+    cv::VideoCapture cap;
+    QPointer<QThread> videoProcessingThread;
+    
+    YOLO *yolo;
     std::vector<std::string> *classNames;
 
-	void connectSignalsSlots();
+    void connectSignalsSlots();
     void showFrame(const QImage &frame);
     void showFPS(double fps);
     void stopVideoProcessing();
