@@ -43,7 +43,7 @@ The following dependencies are required to build and run this project. Make sure
 
 ## Troubleshooting
 
-### Camera Frames Not Capturing
+### Camera frames not capturing
 
 If frames cannot be captured by the camera, try restarting the `nvargus-daemon` by running the following command:
 
