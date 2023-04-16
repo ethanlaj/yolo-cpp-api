@@ -32,6 +32,7 @@ public:
 
 	void connectSignalsSlots();
     void showFrame(const QImage &frame);
+    void showFPS(double fps);
     void stopVideoProcessing();
     
 protected:

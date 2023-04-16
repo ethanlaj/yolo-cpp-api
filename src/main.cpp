@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
 
     MainWindow mainWindow;
-    mainWindow.setFixedSize(1280, 720);
+    mainWindow.setFixedSize(1470, 804);
     mainWindow.videoProcessingThread = nullptr;
 
     mainWindow.show();

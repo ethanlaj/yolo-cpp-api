@@ -73,8 +73,6 @@ MainWindow::~MainWindow() {
 	std::cout << "ui has been deleted" << std::endl;
 }
 
-
-
 void MainWindow::connectSignalsSlots() {
     QObject::connect(this, &MainWindow::confThresholdChanged, [&](float value) {
         yolo->confThreshold = value;
@@ -104,13 +102,6 @@ void MainWindow::connectSignalsSlots() {
 		// Get input width/height from UI
 		int inputWidth = ui->inputWidth->text().toInt();
 		int inputHeight = ui->inputHeight->text().toInt();
-
-		/*std::cout << "model: " << model << std::endl;
-		std::cout << "model_path: " << model_path << std::endl;
-		std::cout << "config_path: " << config_path << std::endl;
-		std::cout << "classNames_path: " << classNames_path << std::endl;
-		std::cout << "inputWidth: " << inputWidth << std::endl;
-		std::cout << "inputHeight: " << inputHeight << std::endl;*/
 		
 		yolo_init(yolo, model_path, config_path, yolo->confThreshold, yolo->nmsThreshold, inputWidth, inputHeight);
 		classNames = new std::vector<std::string>();
@@ -146,6 +137,10 @@ void MainWindow::showFrame(const QImage &frame) {
     videoWidget->showFrame(frame);
 }
 
+void MainWindow::showFPS(double fps) {
+	ui->fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 2));
+}
+
 void MainWindow::onConfThresholdSliderValueChanged(int value) {
    float confThreshold = static_cast<float>(value) / 100;
    emit confThresholdChanged(confThreshold);
@@ -162,12 +157,22 @@ void MainWindow::onStartButtonClicked() {
 	ui->startButton->setEnabled(false);
     ui->stopButton->setEnabled(true);
     
+    ui->modelName->setEnabled(false);
+	ui->namesFile->setEnabled(false);
+	ui->inputWidth->setEnabled(false);
+	ui->inputHeight->setEnabled(false);
+    
     emit startClicked();
 }
 
 void MainWindow::onStopButtonClicked() {
     ui->stopButton->setEnabled(false);
     ui->startButton->setEnabled(true);
+    
+    ui->modelName->setEnabled(true);
+	ui->namesFile->setEnabled(true);
+	ui->inputWidth->setEnabled(true);
+	ui->inputHeight->setEnabled(true);
 
     emit stopClicked();
 

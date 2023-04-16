@@ -10,6 +10,8 @@ void setupCamera(MainWindow &mainWindow, int framerate);
 
 void processFrame(MainWindow &mainWindow, cv::VideoCapture &cap, YOLO &yolo, const std::vector<std::string> &classNames);
 
+void updateFPS(MainWindow &mainWindow);
+
 void addDetectionsToFrame(cv::Mat &frame, cv::Mat &resized_frame, const std::vector<Detection> &detections, const std::vector<std::string> &classNames);
 
 #endif //CAMERA_H

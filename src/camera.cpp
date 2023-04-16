@@ -41,8 +41,10 @@ void processFrame(MainWindow &mainWindow, cv::VideoCapture &cap, YOLO &yolo, con
         cv::Mat resized_frame;
         cv::resize(frame, resized_frame, cv::Size(416, 416));
 
-		std::vector<Detection> detections = yolo_detect(&yolo, resized_frame);
-		addDetectionsToFrame(frame, resized_frame, detections, classNames);
+        std::vector<Detection> detections = yolo_detect(&yolo, resized_frame);
+        addDetectionsToFrame(frame, resized_frame, detections, classNames);
+
+        updateFPS(mainWindow);
 
         QImage img = QImage((const unsigned char*) (frame.data), frame.cols, frame.rows, frame.step, QImage::Format_RGB888).rgbSwapped();
         mainWindow.showFrame(img);
@@ -53,6 +55,23 @@ void processFrame(MainWindow &mainWindow, cv::VideoCapture &cap, YOLO &yolo, con
         std::cerr << "Error: " << e.what() << std::endl;
         mainWindow.stopVideoProcessing();
     }
+}
+
+void updateFPS(MainWindow &mainWindow) {
+	static int frame_counter = 0;
+    static double last_fps_calculation_time = 0.0;
+    static double fps = 0.0;
+    
+	frame_counter++;
+	double current_time = static_cast<double>(cv::getTickCount()) / cv::getTickFrequency();
+	if (current_time - last_fps_calculation_time >= 1.0) {
+		fps = frame_counter / (current_time - last_fps_calculation_time);
+		last_fps_calculation_time = current_time;
+		frame_counter = 0;
+	}
+	
+	// Display FPS on the GUI
+	mainWindow.showFPS(fps);
 }
 
 void addDetectionsToFrame(cv::Mat &frame, cv::Mat &resized_frame, const std::vector<Detection> &detections, const std::vector<std::string> &classNames) {
@@ -79,3 +98,5 @@ void addDetectionsToFrame(cv::Mat &frame, cv::Mat &resized_frame, const std::vec
         cv::putText(frame, label, cv::Point(scaled_bbox.x, scaled_bbox.y), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
     }
 }
+
+
