@@ -9,6 +9,12 @@ The following dependencies are required to build and run this project. Make sure
 - OpenCV (4.x.x)
 - Qt (5.15.9)
 
+## Setting Up The Models
+
+1. Create a `models` folder in the root directory
+2. In the models folder, create 3 folders: `cfg`, `names`, and `weights`
+3. Add models you want to use in these 3 folders. For example, if you wanted to use yolov7-tiny, you would need to add `yolov7-tiny.weights` in the weights folder, `yolov7-tiny.cfg` in the cfg, and `coco.names` in the names folder
+
 ## How to run the project
 
 1. Clone the repository and navigate to the project directory:
